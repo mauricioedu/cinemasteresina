@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">CinemasTeresina</string>
+
+    <string name="string_click_to_load">clique no botão para carregar os filmes</string>
+
+    <string name="string_getting_json_title">Espere um momento...</string>
+
+    <string name="string_getting_json_message">Estou buscando seus filmes</string>
+
+    <string name="string_some_thing_wrong">Algo deu errado</string>
+
+    <string name="string_internet_connection_not_available">Conexão à Internet não disponível.</string>
+</resources>
