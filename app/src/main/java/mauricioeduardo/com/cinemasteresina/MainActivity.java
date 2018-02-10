@@ -1,117 +1,131 @@
 package mauricioeduardo.com.cinemasteresina;
 
-import android.app.ProgressDialog;
+import android.app.Activity;
+
+import android.content.Context;
+import android.content.ContextWrapper;
+import android.content.res.Configuration;
 import android.os.Bundle;
-import android.support.annotation.NonNull;
-import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
+
 import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
-import android.view.Gravity;
-import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ListView;
-import android.widget.Toast;
+import android.support.v7.widget.DefaultItemAnimator;
+import android.support.v7.widget.GridLayoutManager;
+import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.reflect.TypeToken;
 
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.List;
 
+import mauricioeduardo.com.cinemasteresina.adapter.MeuCinemaAdapter;
+import mauricioeduardo.com.cinemasteresina.api.ApiService;
+import mauricioeduardo.com.cinemasteresina.api.RetroClient;
+import mauricioeduardo.com.cinemasteresina.model.Filme;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
 public class MainActivity extends AppCompatActivity {
 
-    private ListView listView;
-    private View parentView;
-
-    private ArrayList<Filme> filmeList;
-    private MeuCinemaAdapter adapter;
-
+    private RecyclerView recyclerView;
+    private List<Filme> filmes = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
+        recyclerView = (RecyclerView) findViewById(R.id.recycler_view);
+        if (getActivity().getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT){
+            recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
+        } else {
+            recyclerView.setLayoutManager(new GridLayoutManager(this, 4));
+        }
 
-        filmeList = new ArrayList<>();
+        loadJSON();
 
-        parentView = findViewById(R.id.parentLayout);
+    }
 
-
-        listView = (ListView) findViewById(R.id.listView);
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                Snackbar.make(parentView, filmeList.get(position).getTitulo() + " => " + filmeList.get(position).getGenero(), Snackbar.LENGTH_LONG).show();
+    public Activity getActivity(){
+        Context context = this;
+        while (context instanceof ContextWrapper){
+            if (context instanceof Activity){
+                return (Activity) context;
             }
-        });
+            context = ((ContextWrapper) context).getBaseContext();
+        }
+        return null;
 
-        Toast toast = Toast.makeText(getApplicationContext(), R.string.string_click_to_load, Toast.LENGTH_LONG);
-        toast.setGravity(Gravity.CENTER, 0, 0);
-        toast.show();
+    }
 
-        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-        assert fab != null;
+    private void loadJSON(){
 
-        fab.setOnClickListener(new View.OnClickListener() {
+        ApiService serviceAPI = RetroClient.getClient();
+        Call<JsonArray> loadFilmeCall = serviceAPI.readFilmeArray();
+
+        loadFilmeCall.enqueue(new Callback<JsonArray>() {
             @Override
-            public void onClick(@NonNull final View view) {
-                if (InternetConnection.checkConnection(getApplicationContext())) {
-                    final ProgressDialog dialog;
+            public void onResponse(Call<JsonArray> call, Response<JsonArray> response) {
 
-                    dialog = new ProgressDialog(MainActivity.this);
-                    dialog.setTitle(getString(R.string.string_getting_json_title));
-                    dialog.setMessage(getString(R.string.string_getting_json_message));
-                    dialog.show();
+                try {
+
+                    String teamString = response.body().toString();
+
+                    Type listType = new TypeToken<List<Filme>>() {}.getType();
+                    filmes = getTeamListFromJson(teamString, listType);
+
+                    recyclerView.setItemAnimator(new DefaultItemAnimator());
+                    recyclerView.setAdapter(new MeuCinemaAdapter(getApplicationContext(), filmes));
+
+                    //sorting recipe in alphabetical order which UI test was done upon
+                    // Collections.sort(recipes, Recipe.BY_NAME_ALPHABETICAL);
 
 
-                    ApiService api = RetroClient.getApiService();
-
-
-                    Call<CinemaList> call = api.getMyJSON();
-
-                    /**
-                     * Enqueue Callback will be call when get response...
-                     */
-                    call.enqueue(new Callback<CinemaList>() {
-                        @Override
-                        public void onResponse(Call<CinemaList> call, Response<CinemaList> response) {
-                            //Dismiss Dialog
-                            dialog.dismiss();
-
-                            if(response.isSuccessful()) {
-                                /**
-                                 * Got Successfully
-                                 */
-                                filmeList = response.body().getFilmes();
-
-                                /**
-                                 * Binding that List to Adapter
-                                 */
-                                adapter = new MeuCinemaAdapter(MainActivity.this, filmeList);
-                                listView.setAdapter(adapter);
-
-                            } else {
-                                Snackbar.make(parentView, R.string.string_some_thing_wrong, Snackbar.LENGTH_LONG).show();
-                            }
-                        }
-
-                        @Override
-                        public void onFailure(Call<CinemaList> call, Throwable t) {
-
-                        }
-
-                    });
-
-                } else {
-                    Snackbar.make(parentView, R.string.string_internet_connection_not_available, Snackbar.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    Log.d("onResponse", "There is an error");
+                    e.printStackTrace();
                 }
+
             }
+
+            @Override
+            public void onFailure(Call<JsonArray> call, Throwable t) {
+
+                Log.d("onFailure", t.toString());
+
+            }
+
+
         });
+    }
+
+    public static <T> List<T> getTeamListFromJson(String jsonString, Type type) {
+        if (!isValid(jsonString)) {
+            return null;
+        }
+        return new Gson().fromJson(jsonString, type);
+    }
+
+    public static boolean isValid(String json) {
+        try {
+            new JsonParser().parse(json);
+            return true;
+        } catch (JsonSyntaxException jse) {
+            return false;
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        loadJSON();
     }
 }
